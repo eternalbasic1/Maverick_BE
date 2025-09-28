@@ -258,7 +258,7 @@ def update_subscription_rate(request):
         
         # End current active rate if new rate is immediate
         current_rate = subscription.current_rate
-        if current_rate and effective_from <= timezone.now().date():
+        if current_rate and effective_from :
             current_rate.effective_to = effective_from - timezone.timedelta(days=1)
             current_rate.is_active = False
             current_rate.save()
