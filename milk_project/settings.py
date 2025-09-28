@@ -144,7 +144,7 @@ FIREBASE_CREDENTIALS_PATH = os.environ.get('FIREBASE_CREDENTIALS_PATH', 'path/to
 
 # JWT Configuration
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key')
-JWT_ACCESS_TOKEN_LIFETIME = 60 * 15  # 15 minutes
+JWT_ACCESS_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 15 minutes
 JWT_REFRESH_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 7 days
 
 
