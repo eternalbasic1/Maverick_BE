@@ -1,4 +1,5 @@
 # milk_app/views.py
+from contextlib import nullcontext
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -9,6 +10,7 @@ from django.db.models import Sum, Count, Q
 from .permission import IsJWTAuthenticated, IsAdmin, IsOwnerOrAdmin
 from datetime import datetime
 from django.utils import timezone
+from django.db import connection
 
 import jwt
 from django.conf import settings
@@ -22,6 +24,32 @@ from .serializers import (
 from .utils import generate_jwt_tokens, is_past_cutoff
 from .firebase_config import FirebaseConfig
 
+
+# Health Check
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Health check endpoint to verify API and database connectivity"""
+    try:
+        # Test database connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        
+        return Response({
+            'status': 'healthy',
+            'timestamp': timezone.now().isoformat(),
+            'database': 'connected',
+            'api': 'operational'
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        return Response({
+            'status': 'unhealthy',
+            'timestamp': timezone.now().isoformat(),
+            'database': 'disconnected',
+            'api': 'operational',
+            'error': str(e)
+        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 # Admin Views
 def admin_required(view_func):
@@ -88,6 +116,7 @@ def signup(request):
 @permission_classes([AllowAny])
 def login(request):
     serializer = UserLoginSerializer(data=request.data)
+    print("request.data", request.data)
     if serializer.is_valid():
         phone_number = serializer.validated_data['phone_number']
         
@@ -175,7 +204,17 @@ def user_subscription(request):
         try:
             subscription = UserSubscription.objects.get(user=request.user)
             serializer = UserSubscriptionSerializer(subscription)
-            return Response(serializer.data)
+            rate_history = serializer.data['rate_history']
+            current_rate = None
+            for rate in rate_history:
+                if rate['effective_to'] is None:
+                    current_rate = rate['daily_liters']
+                    break
+            
+            data = serializer.data.copy()
+            data['current_rate'] = float(current_rate)
+            
+            return Response(data)
         except UserSubscription.DoesNotExist:
             return Response({'message': 'No active subscription found'}, status=status.HTTP_404_NOT_FOUND)
     
@@ -889,6 +928,18 @@ def user_profile(request):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAdmin])
+def all_customers(request):
+    """Get all customer details (admin only)"""
+    customers = User.objects.filter(role='customer').order_by('-created_at')
+    serializer = UserSerializer(customers, many=True)
+    return Response({
+        'count': customers.count(),
+        'customers': serializer.data
+    })
 
 
 

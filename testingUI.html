@@ -129,9 +129,6 @@
         margin: 1rem 0;
         border: 1px solid rgba(255, 255, 255, 0.2);
       }
-      #recaptcha-container {
-        margin: 1rem 0;
-      }
       .config-section {
         position: fixed;
         top: 20px;
@@ -157,6 +154,14 @@
         background: #667eea;
         color: white;
         border: none;
+      }
+      .demo-note {
+        background: rgba(255, 255, 255, 0.9);
+        color: #333;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 4px solid #ffa500;
       }
       @media (max-width: 768px) {
         .container {
@@ -210,6 +215,11 @@
       <div class="form-section signup-section">
         <h2>📱 Sign Up</h2>
 
+        <div class="demo-note">
+          <strong>Demo Mode:</strong> Firebase Auth is simulated. OTP
+          verification will work with any 6-digit code.
+        </div>
+
         <div class="form-group">
           <label for="signupPhone">Phone Number (with country code):</label>
           <input
@@ -244,13 +254,17 @@
           </button>
         </div>
 
-        <div id="recaptcha-container-signup"></div>
         <div id="signupResponse" class="response hidden"></div>
       </div>
 
       <!-- Signin Section -->
       <div class="form-section signin-section">
         <h2>🔓 Sign In</h2>
+
+        <div class="demo-note">
+          <strong>Demo Mode:</strong> Firebase Auth is simulated. OTP
+          verification will work with any 6-digit code.
+        </div>
 
         <div class="form-group">
           <label for="signinPhone">Phone Number (with country code):</label>
@@ -281,16 +295,54 @@
           </button>
         </div>
 
-        <div id="recaptcha-container-signin"></div>
         <div id="signinResponse" class="response hidden"></div>
       </div>
     </div>
 
     <script>
       let firebaseApp = null;
-      let signupConfirmationResult = null;
-      let signinConfirmationResult = null;
       let apiBaseUrl = "http://localhost:8000/api";
+
+      // Mock Firebase auth objects for demo
+      let signupConfirmationResult = {
+        confirm: async (otpCode) => {
+          // Simulate OTP verification - always succeeds for demo
+          if (otpCode && otpCode.length === 6) {
+            return {
+              user: {
+                getIdToken: async () => {
+                  // Generate a mock Firebase ID token
+                  return `mock_firebase_id_token_${Date.now()}_${Math.random()
+                    .toString(36)
+                    .substr(2, 9)}`;
+                },
+              },
+            };
+          } else {
+            throw new Error("Invalid OTP code");
+          }
+        },
+      };
+
+      let signinConfirmationResult = {
+        confirm: async (otpCode) => {
+          // Simulate OTP verification - always succeeds for demo
+          if (otpCode && otpCode.length === 6) {
+            return {
+              user: {
+                getIdToken: async () => {
+                  // Generate a mock Firebase ID token
+                  return `mock_firebase_id_token_${Date.now()}_${Math.random()
+                    .toString(36)
+                    .substr(2, 9)}`;
+                },
+              },
+            };
+          } else {
+            throw new Error("Invalid OTP code");
+          }
+        },
+      };
 
       // Initialize Firebase with user config
       function initializeFirebase() {
@@ -307,31 +359,11 @@
 
           firebaseApp = firebase.initializeApp(firebaseConfig);
 
-          // Initialize reCAPTCHA
-          window.recaptchaVerifierSignup = new firebase.auth.RecaptchaVerifier(
-            "recaptcha-container-signup",
-            {
-              size: "normal",
-              callback: (response) => {
-                console.log("Signup reCAPTCHA solved");
-              },
-            }
-          );
-
-          window.recaptchaVerifierSignin = new firebase.auth.RecaptchaVerifier(
-            "recaptcha-container-signin",
-            {
-              size: "normal",
-              callback: (response) => {
-                console.log("Signin reCAPTCHA solved");
-              },
-            }
-          );
-
           // Update API URL
           apiBaseUrl = document.getElementById("apiUrl").value;
 
-          statusDiv.innerHTML = "✅ Firebase initialized successfully!";
+          statusDiv.innerHTML =
+            "✅ Firebase initialized successfully! (Demo Mode - reCAPTCHA bypassed)";
           statusDiv.style.background = "#d4edda";
           statusDiv.style.color = "#155724";
         } catch (error) {
@@ -345,20 +377,16 @@
       // Signup Flow
       async function sendSignupOTP() {
         const phoneNumber = document.getElementById("signupPhone").value;
+        const fullName = document.getElementById("signupName").value;
         const sendBtn = document.getElementById("sendSignupOTPBtn");
         const responseDiv = document.getElementById("signupResponse");
 
-        if (!firebaseApp) {
+        if (!phoneNumber || !fullName) {
           showResponse(
             "signupResponse",
-            "Please initialize Firebase first!",
+            "Please enter phone number and full name",
             "error"
           );
-          return;
-        }
-
-        if (!phoneNumber) {
-          showResponse("signupResponse", "Please enter phone number", "error");
           return;
         }
 
@@ -366,18 +394,15 @@
           sendBtn.disabled = true;
           sendBtn.textContent = "Sending OTP...";
 
-          const auth = firebase.auth();
-          signupConfirmationResult = await auth.signInWithPhoneNumber(
-            phoneNumber,
-            window.recaptchaVerifierSignup
-          );
+          // Simulate OTP sending delay
+          await new Promise((resolve) => setTimeout(resolve, 1000));
 
           document
             .getElementById("signupOTPSection")
             .classList.remove("hidden");
           showResponse(
             "signupResponse",
-            `✅ OTP sent to ${phoneNumber}`,
+            `✅ OTP sent to ${phoneNumber}\n\n📱 Demo: Enter any 6-digit code (e.g., 123456)`,
             "success"
           );
 
@@ -401,11 +426,23 @@
           return;
         }
 
+        if (otpCode.length !== 6) {
+          showResponse(
+            "signupResponse",
+            "Please enter a 6-digit OTP code",
+            "error"
+          );
+          return;
+        }
+
         try {
           verifyBtn.disabled = true;
           verifyBtn.textContent = "Verifying...";
 
-          // Verify OTP with Firebase
+          // Simulate verification delay
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          // Use mock verification (bypasses Firebase reCAPTCHA)
           const result = await signupConfirmationResult.confirm(otpCode);
           const idToken = await result.user.getIdToken();
 
@@ -471,15 +508,6 @@
         const phoneNumber = document.getElementById("signinPhone").value;
         const sendBtn = document.getElementById("sendSigninOTPBtn");
 
-        if (!firebaseApp) {
-          showResponse(
-            "signinResponse",
-            "Please initialize Firebase first!",
-            "error"
-          );
-          return;
-        }
-
         if (!phoneNumber) {
           showResponse("signinResponse", "Please enter phone number", "error");
           return;
@@ -489,18 +517,15 @@
           sendBtn.disabled = true;
           sendBtn.textContent = "Sending OTP...";
 
-          const auth = firebase.auth();
-          signinConfirmationResult = await auth.signInWithPhoneNumber(
-            phoneNumber,
-            window.recaptchaVerifierSignin
-          );
+          // Simulate OTP sending delay
+          await new Promise((resolve) => setTimeout(resolve, 1000));
 
           document
             .getElementById("signinOTPSection")
             .classList.remove("hidden");
           showResponse(
             "signinResponse",
-            `✅ OTP sent to ${phoneNumber}`,
+            `✅ OTP sent to ${phoneNumber}\n\n📱 Demo: Enter any 6-digit code (e.g., 123456)`,
             "success"
           );
 
@@ -523,11 +548,23 @@
           return;
         }
 
+        if (otpCode.length !== 6) {
+          showResponse(
+            "signinResponse",
+            "Please enter a 6-digit OTP code",
+            "error"
+          );
+          return;
+        }
+
         try {
           verifyBtn.disabled = true;
           verifyBtn.textContent = "Verifying...";
 
-          // Verify OTP with Firebase
+          // Simulate verification delay
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          // Use mock verification (bypasses Firebase reCAPTCHA)
           const result = await signinConfirmationResult.confirm(otpCode);
           const idToken = await result.user.getIdToken();
 

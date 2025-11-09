@@ -3,6 +3,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Health Check
+    path('health/', views.health_check, name='health_check'),
+    
     # Authentication
     path('auth/signup/', views.signup, name='signup'), 
     path('auth/login/', views.login, name='login'),
@@ -10,6 +13,9 @@ urlpatterns = [
     
     # User Profile
     path('user/me/', views.user_profile, name='user_profile'),
+    
+    # Admin - Customer Management
+    path('admin/allcustomers/', views.all_customers, name='all_customers'),
     
     # Subscription Management (Updated with Rate Versioning)
     path('subscription/', views.user_subscription, name='user_subscription'),
