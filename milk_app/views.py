@@ -205,6 +205,7 @@ def user_subscription(request):
             subscription = UserSubscription.objects.get(user=request.user)
             serializer = UserSubscriptionSerializer(subscription)
             rate_history = serializer.data['rate_history']
+
             current_rate = None
             for rate in rate_history:
                 if rate['effective_to'] is None:
@@ -212,7 +213,8 @@ def user_subscription(request):
                     break
             
             data = serializer.data.copy()
-            data['current_rate'] = float(current_rate)
+            print("current_rate", current_rate)
+            data['current_rate'] = current_rate
             
             return Response(data)
         except UserSubscription.DoesNotExist:
@@ -279,10 +281,14 @@ def update_subscription_rate(request):
         return Response({'error': 'No active subscription found'}, status=status.HTTP_404_NOT_FOUND)
     
     serializer = UpdateSubscriptionRateSerializer(data=request.data)
-    if serializer.is_valid():
-        new_daily_liters = serializer.validated_data['new_daily_liters']
-        effective_from = serializer.validated_data['effective_from']
-        
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    new_daily_liters = serializer.validated_data['new_daily_liters']
+    effective_from = serializer.validated_data['effective_from']
+    
+    # Use atomic transaction to ensure data consistency
+    with transaction.atomic():
         # Check if there's already a rate for this date
         existing_rate = SubscriptionRate.objects.filter(
             subscription=subscription,
@@ -295,12 +301,69 @@ def update_subscription_rate(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # End current active rate if new rate is immediate
-        current_rate = subscription.current_rate
-        if current_rate and effective_from :
-            current_rate.effective_to = effective_from - timezone.timedelta(days=1)
-            current_rate.is_active = False
-            current_rate.save()
+        # Get current active rate
+        current_active_rate = SubscriptionRate.objects.filter(
+            subscription=subscription, 
+            is_active=True
+        ).first()
+        
+        # Update previous active rate if it exists
+        if current_active_rate:
+            # Set effective_to to the day before new rate starts
+            current_active_rate.effective_to = effective_from - timezone.timedelta(days=1)
+            current_active_rate.is_active = False
+            current_active_rate.save()
+        
+        # Create new rate
+        new_rate = SubscriptionRate.objects.create(
+            subscription=subscription,
+            daily_liters=new_daily_liters,
+            effective_from=effective_from,
+            effective_to=None,  # Current rate has no end date
+            is_active=True
+        )
+    
+    return Response({
+        'message': 'Subscription rate updated successfully',
+        'new_rate': SubscriptionRateSerializer(new_rate).data,
+        'effective_from': effective_from
+    }, status=status.HTTP_201_CREATED)
+    """Update subscription rate - creates new rate version"""
+    print()
+    try:
+        subscription = UserSubscription.objects.get(user=request.user, is_active=True)
+    except UserSubscription.DoesNotExist:
+        return Response({'error': 'No active subscription found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = UpdateSubscriptionRateSerializer(data=request.data)
+    if serializer.is_valid():
+        new_daily_liters = serializer.validated_data['new_daily_liters']
+        effective_from = serializer.validated_data['effective_from']
+        print("effective_from", effective_from)
+        print("new_daily_liters", new_daily_liters)
+        
+        # Check if there's already a rate for this date
+        existing_rate = SubscriptionRate.objects.filter(
+            subscription=subscription,
+            effective_from=effective_from
+        ).first()
+        print("existing_rate", existing_rate)
+        
+        if existing_rate:
+            return Response(
+                {'error': f'Rate already exists for {effective_from}. Cannot create duplicate.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        active_subscription_rates = SubscriptionRate.objects.filter(subscription=subscription, is_active=True).first()
+        print("active_subscription_rates", active_subscription_rates)
+        if active_subscription_rates:
+            active_subscription_rates.effective_to = effective_from - timezone.timedelta(days=1)
+            print("active_subscription_rates.effective_to", active_subscription_rates.effective_to)
+            print("active_subscription_rates.is_active", active_subscription_rates.is_active)
+            active_subscription_rates.is_active = False
+            print("active_subscription_rates.is_active", active_subscription_rates.is_active)
+            active_subscription_rates.save()
         
         # Create new rate
         new_rate = SubscriptionRate.objects.create(
@@ -308,7 +371,8 @@ def update_subscription_rate(request):
             daily_liters=new_daily_liters,
             effective_from=effective_from
         )
-        
+        print("new_rate", new_rate)
+        print()
         return Response({
             'message': 'Subscription rate updated successfully',
             'new_rate': SubscriptionRateSerializer(new_rate).data,
