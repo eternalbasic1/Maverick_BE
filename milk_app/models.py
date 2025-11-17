@@ -135,6 +135,7 @@ class DailyMilkDelivery(models.Model):
     actual_liters = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     rate_applied = models.ForeignKey(SubscriptionRate, on_delete=models.PROTECT, null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='scheduled')
+    reason = models.TextField(blank=True, max_length=500, null=True, help_text='Optional reason for failed delivery or other status changes')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

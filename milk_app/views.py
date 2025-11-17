@@ -544,6 +544,13 @@ def admin_delivery_schedule(request):
         skip_date=delivery_date
     ).values_list('user_id', flat=True)
     
+    # Get existing delivery records for this date
+    existing_deliveries = DailyMilkDelivery.objects.filter(
+        delivery_date=delivery_date
+    ).select_related('user')
+    delivery_status_map = {delivery.user.id: delivery.status for delivery in existing_deliveries}
+    delivery_reason_map = {delivery.user.id: delivery.reason for delivery in existing_deliveries}
+    
     # Build delivery schedule with correct rates
     deliveries = []
     total_liters = 0
@@ -559,13 +566,18 @@ def admin_delivery_schedule(request):
             ).first()
             
             if applicable_rate:
+                # Use status from existing delivery if available, otherwise default to 'scheduled'
+                delivery_status = delivery_status_map.get(subscription.user.id, 'scheduled')
+                delivery_reason = delivery_reason_map.get(subscription.user.id, None)
+                
                 deliveries.append({
                     'user_id': subscription.user.id,
                     'user_name': subscription.user.full_name,
                     'user_phone': subscription.user.phone_number,
                     'scheduled_liters': applicable_rate.daily_liters,
                     'rate_id': applicable_rate.id,
-                    'status': 'scheduled'
+                    'status': delivery_status,
+                    'reason': delivery_reason
                 })
                 total_liters += applicable_rate.daily_liters
     
@@ -730,6 +742,7 @@ def admin_update_delivery_status(request):
         user_id = delivery_data.get('user_id')
         new_status = delivery_data.get('status')
         actual_liters = delivery_data.get('actual_liters')
+        reason = delivery_data.get('reason', None)  # Optional reason field
         
         try:
             subscription = UserSubscription.objects.get(user_id=user_id)
@@ -752,7 +765,9 @@ def admin_update_delivery_status(request):
                 defaults={
                     'scheduled_liters': scheduled_liters,
                     'status': new_status,
-                    'actual_liters': actual_liters
+                    'actual_liters': actual_liters,
+                    'reason': reason,
+                    'rate_applied': rate
                 }
             )
 
@@ -760,7 +775,10 @@ def admin_update_delivery_status(request):
                 delivery.status = new_status
                 if actual_liters is not None:
                     delivery.actual_liters = actual_liters
+                if reason is not None:
+                    delivery.reason = reason
                 delivery.scheduled_liters = scheduled_liters  # ✅ keep it updated if plan changes
+                delivery.rate_applied = rate  # ✅ keep rate updated
                 delivery.save()
             
             updated_count += 1
