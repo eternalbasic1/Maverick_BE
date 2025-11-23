@@ -1,5 +1,4 @@
 # milk_app/views.py
-from contextlib import nullcontext
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -15,7 +14,7 @@ from django.db import connection
 import jwt
 from django.conf import settings
 
-from .models import DailyMilkDelivery, DailySkipRequest, SubscriptionRate, User, DailyMilkRequest, UserSubscription
+from .models import DailyMilkDelivery, DailySkipRequest, SubscriptionRate, User, DailyMilkRequest, UserSubscription, MilkPricing
 from .serializers import (
     CreateSubscriptionSerializer, DailyMilkDeliverySerializer, SubscriptionRateSerializer, UpdateSubscriptionRateSerializer, UserRegistrationSerializer, UserLoginSerializer, RefreshTokenSerializer,
     UserSerializer, DailyMilkRequestSerializer, AdminRequestUpdateSerializer, UserSubscriptionSerializer, DailySkipRequestSerializer,
@@ -238,7 +237,8 @@ def user_subscription(request):
                 # Create subscription
                 subscription = UserSubscription.objects.create(
                     user=request.user,
-                    subscription_start_date=serializer.validated_data['subscription_start_date']
+                    subscription_start_date=serializer.validated_data['subscription_start_date'],
+                    milk_type=serializer.validated_data.get('milk_type', 'buffalo')
                 )
                 
                 # Create initial rate
@@ -415,41 +415,86 @@ def subscription_billing_history(request):
         status='delivered'
     ).order_by('delivery_date')
     
+    # Parse dates once
+    start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
     billing_data = []
     total_liters = 0
     total_days = 0
+    total_amount = 0
     
     for rate in rates_in_period:
-        rate_start = max(rate.effective_from, datetime.strptime(start_date, '%Y-%m-%d').date())
-        rate_end = min(rate.effective_to or datetime.strptime(end_date, '%Y-%m-%d').date(), 
-                      datetime.strptime(end_date, '%Y-%m-%d').date())
+        rate_start = max(rate.effective_from, start_date_obj)
+        rate_end = min(rate.effective_to or end_date_obj, end_date_obj)
         
         # Count delivered days for this rate
         rate_deliveries = deliveries.filter(
             delivery_date__range=[rate_start, rate_end],
             rate_applied=rate
         )
+        for i in rate_deliveries:
+            print("--------------------------------")
+            print("i.actual_liters", i.actual_liters)
+            print("i.scheduled_liters", i.scheduled_liters)
+            print("i.rate_applied", i.rate_applied)
+            print("i.delivery_date", i.delivery_date)
+            print("i.status", i.status)
+            print("i.reason", i.reason)
+            print("i.created_at", i.created_at)
+            print("i.updated_at", i.updated_at)
+            print("i.id", i.id)
         
         days_count = rate_deliveries.count()
         liters_delivered = sum(float(d.actual_liters or d.scheduled_liters) for d in rate_deliveries)
         
         if days_count > 0:
+            # Get applicable pricing for this rate period
+            # Find pricing that matches the daily_liters and was effective during this period
+            applicable_pricing = MilkPricing.objects.filter(
+                liters=rate.daily_liters,
+                effective_from__lte=rate_end,
+            ).filter(
+                Q(effective_to__isnull=True) | Q(effective_to__gte=rate_start)
+            ).order_by('-effective_from').first()
+            
+            # Calculate pricing details
+            pricing_info = None
+            amount = 0
+            
+            if applicable_pricing:
+                # Price per day for this liter amount
+                price_per_day = float(applicable_pricing.price)
+                amount = price_per_day * days_count
+                
+                pricing_info = {
+                    'liters': str(applicable_pricing.liters),
+                    'price_per_day': str(applicable_pricing.price),
+                    'pricing_effective_from': applicable_pricing.effective_from,
+                    'pricing_effective_to': applicable_pricing.effective_to,
+                    'days_count': days_count,
+                    'total_amount': float(amount)
+                }
+            
             billing_data.append({
-                'rate_id': rate.id,
-                'daily_liters': rate.daily_liters,
+                'rate_id': str(rate.id),
+                'daily_liters': str(rate.daily_liters),
                 'effective_from': rate.effective_from,
                 'effective_to': rate.effective_to,
                 'days_delivered': days_count,
-                'total_liters': liters_delivered
+                'total_liters': liters_delivered,
+                'pricing': pricing_info
             })
             
             total_liters += liters_delivered
             total_days += days_count
+            total_amount += amount
     
     return Response({
         'billing_period': {'start_date': start_date, 'end_date': end_date},
         'total_days_delivered': total_days,
         'total_liters_delivered': total_liters,
+        'total_amount': float(total_amount),
         'rate_breakdown': billing_data
     })
 

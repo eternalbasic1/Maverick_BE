@@ -54,11 +54,17 @@ class DailyMilkRequest(models.Model):
 
 class UserSubscription(models.Model):
     """Main subscription record - tracks overall subscription status"""
+    MILK_TYPE_CHOICES = [
+        ('buffalo', 'Buffalo'),
+        ('cow', 'Cow'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='subscription')
     is_active = models.BooleanField(default=True)
     subscription_start_date = models.DateField()
     subscription_end_date = models.DateField(null=True, blank=True)  # null = ongoing
+    milk_type = models.CharField(max_length=10, choices=MILK_TYPE_CHOICES, default='buffalo')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -142,3 +148,20 @@ class DailyMilkDelivery(models.Model):
     class Meta:
         unique_together = ['user', 'delivery_date']
         db_table = 'daily_milk_deliveries'
+
+
+class MilkPricing(models.Model):
+    """Pricing table for milk based on liters - supports versioning"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    liters = models.DecimalField(max_digits=5, decimal_places=2)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)  # null = current pricing
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.liters}L - ₹{self.price} (from {self.effective_from})"
+    
+    class Meta:
+        db_table = 'milk_pricing'
+        ordering = ['liters', '-effective_from']

@@ -6,6 +6,7 @@ from .models import (
     SubscriptionRate,
     DailySkipRequest,
     DailyMilkDelivery,
+    MilkPricing,
 )
 
 
@@ -27,8 +28,8 @@ class DailyMilkRequestAdmin(admin.ModelAdmin):
 
 @admin.register(UserSubscription)
 class UserSubscriptionAdmin(admin.ModelAdmin):
-    list_display = ['user', 'is_active', 'subscription_start_date', 'subscription_end_date', 'created_at']
-    list_filter = ['is_active', 'subscription_start_date', 'subscription_end_date']
+    list_display = ['user', 'is_active', 'subscription_start_date', 'subscription_end_date', 'milk_type', 'created_at']
+    list_filter = ['is_active', 'milk_type', 'subscription_start_date', 'subscription_end_date']
     search_fields = ['user__phone_number', 'user__full_name']
     readonly_fields = ['id', 'created_at', 'updated_at']
 
@@ -63,3 +64,12 @@ class DailyMilkDeliveryAdmin(admin.ModelAdmin):
     list_filter = ['status', 'delivery_date', 'created_at']
     search_fields = ['user__phone_number', 'user__full_name']
     readonly_fields = ['id', 'created_at', 'updated_at']
+
+
+@admin.register(MilkPricing)
+class MilkPricingAdmin(admin.ModelAdmin):
+    list_display = ['liters', 'price', 'effective_from', 'effective_to', 'created_at']
+    list_filter = ['effective_from', 'effective_to', 'created_at']
+    search_fields = ['liters', 'price']
+    readonly_fields = ['id', 'created_at']
+    ordering = ['liters', '-effective_from']

@@ -57,12 +57,13 @@ class UserSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserSubscription
         fields = ['id', 'is_active', 'subscription_start_date', 'subscription_end_date', 
-                 'current_rate', 'rate_history', 'created_at', 'updated_at']
+                 'milk_type', 'current_rate', 'rate_history', 'created_at', 'updated_at']
         read_only_fields = ['id', 'current_rate', 'rate_history', 'created_at', 'updated_at']
 
 class CreateSubscriptionSerializer(serializers.Serializer):
     daily_liters = serializers.DecimalField(max_digits=5, decimal_places=2)
     subscription_start_date = serializers.DateField()
+    milk_type = serializers.ChoiceField(choices=[('buffalo', 'Buffalo'), ('cow', 'Cow')], default='buffalo')
     
     def validate_subscription_start_date(self, value):
         if value < timezone.now().date():
