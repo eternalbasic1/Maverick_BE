@@ -151,17 +151,24 @@ class DailyMilkDelivery(models.Model):
 
 
 class MilkPricing(models.Model):
-    """Pricing table for milk based on liters - supports versioning"""
+    """Pricing table for milk - stores per liter price by milk type, supports versioning"""
+    MILK_TYPE_CHOICES = [
+        ('buffalo', 'Buffalo'),
+        ('cow', 'Cow'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    liters = models.DecimalField(max_digits=5, decimal_places=2)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    milk_type = models.CharField(max_length=10, choices=MILK_TYPE_CHOICES, default='buffalo')
+    liters = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)  # Always 1.0 (per liter pricing)
+    price = models.DecimalField(max_digits=10, decimal_places=2)  # Price per liter
     effective_from = models.DateField()
     effective_to = models.DateField(null=True, blank=True)  # null = current pricing
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
-        return f"{self.liters}L - ₹{self.price} (from {self.effective_from})"
+        return f"{self.milk_type.capitalize()} - {self.liters}L = ₹{self.price}/liter (from {self.effective_from})"
     
     class Meta:
         db_table = 'milk_pricing'
-        ordering = ['liters', '-effective_from']
+        unique_together = ['milk_type', 'effective_from']  # One price per milk type per effective date
+        ordering = ['milk_type', '-effective_from']

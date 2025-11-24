@@ -68,8 +68,8 @@ class DailyMilkDeliveryAdmin(admin.ModelAdmin):
 
 @admin.register(MilkPricing)
 class MilkPricingAdmin(admin.ModelAdmin):
-    list_display = ['liters', 'price', 'effective_from', 'effective_to', 'created_at']
-    list_filter = ['effective_from', 'effective_to', 'created_at']
-    search_fields = ['liters', 'price']
+    list_display = ['milk_type', 'liters', 'price', 'effective_from', 'effective_to', 'created_at']
+    list_filter = ['milk_type', 'effective_from', 'effective_to', 'created_at']
+    search_fields = ['milk_type', 'price']
     readonly_fields = ['id', 'created_at']
-    ordering = ['liters', '-effective_from']
+    ordering = ['milk_type', '-effective_from']

@@ -450,9 +450,10 @@ def subscription_billing_history(request):
         
         if days_count > 0:
             # Get applicable pricing for this rate period
-            # Find pricing that matches the daily_liters and was effective during this period
+            # Find 1-liter price for the subscription's milk_type that was effective during this period
             applicable_pricing = MilkPricing.objects.filter(
-                liters=rate.daily_liters,
+                milk_type=subscription.milk_type,
+                liters=1.0,  # Always use 1-liter pricing
                 effective_from__lte=rate_end,
             ).filter(
                 Q(effective_to__isnull=True) | Q(effective_to__gte=rate_start)
@@ -463,13 +464,18 @@ def subscription_billing_history(request):
             amount = 0
             
             if applicable_pricing:
-                # Price per day for this liter amount
-                price_per_day = float(applicable_pricing.price)
+                # Price per liter
+                price_per_liter = float(applicable_pricing.price)
+                # Price per day = price_per_liter * daily_liters
+                price_per_day = price_per_liter * float(rate.daily_liters)
+                # Total amount = price_per_day * days_count
                 amount = price_per_day * days_count
                 
                 pricing_info = {
-                    'liters': str(applicable_pricing.liters),
-                    'price_per_day': str(applicable_pricing.price),
+                    'milk_type': applicable_pricing.milk_type,
+                    'price_per_liter': str(applicable_pricing.price),
+                    'daily_liters': str(rate.daily_liters),
+                    'price_per_day': f"{price_per_day:.2f}",
                     'pricing_effective_from': applicable_pricing.effective_from,
                     'pricing_effective_to': applicable_pricing.effective_to,
                     'days_count': days_count,
