@@ -680,6 +680,7 @@ def admin_billing_report(request):
     billing_breakdown = []
     total_delivered_liters = 0
     total_delivered_days = 0
+    total_amount = 0
     
     for rate in rates_in_period:
         rate_start = max(rate.effective_from, start_date_obj)
@@ -702,6 +703,39 @@ def admin_billing_report(request):
         
         expected_delivery_days = total_days_in_range - skip_days
         
+        # Get applicable pricing for this rate period
+        # Find 1-liter price for the subscription's milk_type that was effective during this period
+        applicable_pricing = MilkPricing.objects.filter(
+            milk_type=subscription.milk_type,
+            liters=1.0,  # Always use 1-liter pricing
+            effective_from__lte=rate_end,
+        ).filter(
+            Q(effective_to__isnull=True) | Q(effective_to__gte=rate_start)
+        ).order_by('-effective_from').first()
+        
+        # Calculate pricing details
+        pricing_info = None
+        amount = 0
+        
+        if applicable_pricing and delivered_days > 0:
+            # Price per liter
+            price_per_liter = float(applicable_pricing.price)
+            # Price per day = price_per_liter * daily_liters
+            price_per_day = price_per_liter * float(rate.daily_liters)
+            # Total amount = price_per_day * delivered_days
+            amount = price_per_day * delivered_days
+            
+            pricing_info = {
+                'milk_type': applicable_pricing.milk_type,
+                'price_per_liter': str(applicable_pricing.price),
+                'daily_liters': str(rate.daily_liters),
+                'price_per_day': f"{price_per_day:.2f}",
+                'pricing_effective_from': applicable_pricing.effective_from,
+                'pricing_effective_to': applicable_pricing.effective_to,
+                'days_count': delivered_days,
+                'total_amount': float(amount)
+            }
+        
         billing_breakdown.append({
             'rate_id': str(rate.id),
             'daily_liters': str(rate.daily_liters),
@@ -712,11 +746,15 @@ def admin_billing_report(request):
             'expected_delivery_days': expected_delivery_days,
             'actual_delivery_days': delivered_days,
             'delivered_liters': delivered_liters,
-            'delivery_success_rate': f"{(delivered_days/expected_delivery_days*100):.1f}%" if expected_delivery_days > 0 else "0%"
+            'delivery_success_rate': f"{(delivered_days/expected_delivery_days*100):.1f}%" if expected_delivery_days > 0 else "0%",
+            'days_delivered': delivered_days,
+            'total_liters': delivered_liters,
+            'pricing': pricing_info
         })
         
         total_delivered_liters += delivered_liters
         total_delivered_days += delivered_days
+        total_amount += amount
     
     # ✅ Serialize only once at the end
     deliveries_serialized = DailyMilkDeliverySerializer(deliveries, many=True).data
@@ -733,8 +771,12 @@ def admin_billing_report(request):
         },
         'summary': {
             'total_delivered_days': total_delivered_days,
-            'total_delivered_liters': total_delivered_liters
+            'total_delivered_liters': total_delivered_liters,
+            'total_amount': float(total_amount)
         },
+        'total_days_delivered': total_delivered_days,
+        'total_liters_delivered': total_delivered_liters,
+        'total_amount': float(total_amount),
         'rate_breakdown': billing_breakdown,
         'deliveries': deliveries_serialized
     })

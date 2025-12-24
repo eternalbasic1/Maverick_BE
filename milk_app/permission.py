@@ -29,13 +29,18 @@ class IsAdmin(BasePermission):
         """
         Return True if the request user is authenticated and has admin role.
         """
-        return (
-            hasattr(request, 'user') and 
-            request.user and
-            hasattr(request, 'auth') and 
-            request.auth and
-            request.user.role == 'admin'
-        )
+        # First check if user is authenticated
+        if not (hasattr(request, 'user') and request.user and 
+                hasattr(request, 'auth') and request.auth):
+            self.message = 'Authentication required. Please provide a valid JWT token.'
+            return False
+        
+        # Then check if user is admin
+        if request.user.role != 'admin':
+            self.message = f'Admin access required. Current role: {request.user.role}.'
+            return False
+        
+        return True
 
 class IsOwnerOrAdmin(BasePermission):
     """

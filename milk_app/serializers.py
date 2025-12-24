@@ -136,7 +136,6 @@ class AdminRequestUpdateSerializer(serializers.ModelSerializer):
         fields = ['liters', 'status']
 
 
-
 class DailyMilkDeliverySerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyMilkDelivery
