@@ -7,6 +7,7 @@ from .models import (
     DailySkipRequest,
     DailyMilkDelivery,
     MilkPricing,
+    CustomerDeliveryMapping,
 )
 
 
@@ -73,3 +74,13 @@ class MilkPricingAdmin(admin.ModelAdmin):
     search_fields = ['milk_type', 'price']
     readonly_fields = ['id', 'created_at']
     ordering = ['milk_type', '-effective_from']
+
+
+@admin.register(CustomerDeliveryMapping)
+class CustomerDeliveryMappingAdmin(admin.ModelAdmin):
+    list_display = ['delivery_partner', 'customer', 'created_at', 'updated_at']
+    list_filter = ['created_at', 'updated_at']
+    search_fields = ['delivery_partner__full_name', 'delivery_partner__phone_number', 
+                     'customer__full_name', 'customer__phone_number']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    ordering = ['-created_at']

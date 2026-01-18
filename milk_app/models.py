@@ -7,13 +7,14 @@ class User(models.Model):
     ROLE_CHOICES = [
         ('customer', 'Customer'),
         ('admin', 'Admin'),
+        ('delivery_partner', 'Delivery Partner'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone_number = models.CharField(max_length=15, unique=True)
     full_name = models.CharField(max_length=255)
     timezone = models.CharField(max_length=50, default='Asia/Kolkata')
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='customer')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -172,3 +173,20 @@ class MilkPricing(models.Model):
         db_table = 'milk_pricing'
         unique_together = ['milk_type', 'effective_from']  # One price per milk type per effective date
         ordering = ['milk_type', '-effective_from']
+
+
+class CustomerDeliveryMapping(models.Model):
+    """Mapping table to assign customers to delivery partners"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='delivery_mappings')
+    delivery_partner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assigned_customers')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.delivery_partner.full_name} -> {self.customer.full_name}"
+    
+    class Meta:
+        db_table = 'customer_delivery_mappings'
+        unique_together = ['customer', 'delivery_partner']
+        ordering = ['-created_at']

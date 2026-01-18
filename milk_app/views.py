@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.db.models import Sum, Count, Q
-from .permission import IsJWTAuthenticated, IsAdmin, IsOwnerOrAdmin
+from .permission import IsJWTAuthenticated, IsAdmin, IsOwnerOrAdmin, IsDeliveryPartner, IsAdminOrDeliveryPartner
 from datetime import datetime
 from django.utils import timezone
 from django.db import connection
@@ -14,7 +14,7 @@ from django.db import connection
 import jwt
 from django.conf import settings
 
-from .models import DailyMilkDelivery, DailySkipRequest, SubscriptionRate, User, DailyMilkRequest, UserSubscription, MilkPricing
+from .models import DailyMilkDelivery, DailySkipRequest, SubscriptionRate, User, DailyMilkRequest, UserSubscription, MilkPricing, CustomerDeliveryMapping
 from .serializers import (
     CreateSubscriptionSerializer, DailyMilkDeliverySerializer, SubscriptionRateSerializer, UpdateSubscriptionRateSerializer, UserRegistrationSerializer, UserLoginSerializer, RefreshTokenSerializer,
     UserSerializer, DailyMilkRequestSerializer, AdminRequestUpdateSerializer, UserSubscriptionSerializer, DailySkipRequestSerializer,
@@ -570,7 +570,7 @@ def cancel_skip_request(request, skip_id):
 # New Admin Views for Subscription System
 # Updated Admin Views for Rate Versioning System
 @api_view(['GET'])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdminOrDeliveryPartner])
 def admin_delivery_schedule(request):
     """Get delivery schedule for a specific date with correct rates"""
     date_str = request.GET.get('date')
@@ -582,23 +582,51 @@ def admin_delivery_schedule(request):
     except ValueError:
         return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
     
-    # Get all active subscriptions
-    active_subscriptions = UserSubscription.objects.filter(
+    # Check if user is admin or delivery partner
+    user = request.user
+    customer_ids = None
+    
+    # If delivery partner, filter by assigned customers
+    if user.role == 'delivery_partner':
+        customer_ids = CustomerDeliveryMapping.objects.filter(
+            delivery_partner=user
+        ).values_list('customer_id', flat=True)
+        
+        if not customer_ids:
+            return Response({
+                'date': delivery_date,
+                'total_deliveries': 0,
+                'total_liters': 0,
+                'deliveries': [],
+                'message': 'No customers assigned to this delivery partner'
+            })
+    
+    # Get active subscriptions (filtered by customer_ids if delivery partner)
+    active_subscriptions_query = UserSubscription.objects.filter(
         is_active=True,
         subscription_start_date__lte=delivery_date,
     ).filter(
         Q(subscription_end_date__isnull=True) | Q(subscription_end_date__gte=delivery_date)
-    ).select_related('user')
+    )
     
-    # Get skip requests for this date
-    skip_requests = DailySkipRequest.objects.filter(
-        skip_date=delivery_date
-    ).values_list('user_id', flat=True)
+    # Filter by assigned customers if delivery partner
+    if customer_ids is not None:
+        active_subscriptions_query = active_subscriptions_query.filter(user_id__in=customer_ids)
     
-    # Get existing delivery records for this date
-    existing_deliveries = DailyMilkDelivery.objects.filter(
-        delivery_date=delivery_date
-    ).select_related('user')
+    active_subscriptions = active_subscriptions_query.select_related('user')
+    
+    # Get skip requests for this date (filtered by customer_ids if delivery partner)
+    skip_requests_query = DailySkipRequest.objects.filter(skip_date=delivery_date)
+    if customer_ids is not None:
+        skip_requests_query = skip_requests_query.filter(user_id__in=customer_ids)
+    skip_requests = skip_requests_query.values_list('user_id', flat=True)
+    
+    # Get existing delivery records for this date (filtered by customer_ids if delivery partner)
+    existing_deliveries_query = DailyMilkDelivery.objects.filter(delivery_date=delivery_date)
+    if customer_ids is not None:
+        existing_deliveries_query = existing_deliveries_query.filter(user_id__in=customer_ids)
+    existing_deliveries = existing_deliveries_query.select_related('user')
+    
     delivery_status_map = {delivery.user.id: delivery.status for delivery in existing_deliveries}
     delivery_reason_map = {delivery.user.id: delivery.reason for delivery in existing_deliveries}
     
@@ -783,20 +811,38 @@ def admin_billing_report(request):
 
     
 @api_view(['GET'])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdminOrDeliveryPartner])
 def admin_skip_requests(request):
     """Get all skip requests for a date range"""
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
     
-    skip_requests = DailySkipRequest.objects.select_related('user')
+    # Check if user is admin or delivery partner
+    user = request.user
+    customer_ids = None
+    
+    # If delivery partner, filter by assigned customers
+    if user.role == 'delivery_partner':
+        customer_ids = CustomerDeliveryMapping.objects.filter(
+            delivery_partner=user
+        ).values_list('customer_id', flat=True)
+        
+        if not customer_ids:
+            return Response([])
+    
+    # Get skip requests (filtered by customer_ids if delivery partner)
+    skip_requests_query = DailySkipRequest.objects.select_related('user')
+    
+    # Filter by assigned customers if delivery partner
+    if customer_ids is not None:
+        skip_requests_query = skip_requests_query.filter(user_id__in=customer_ids)
     
     if start_date:
-        skip_requests = skip_requests.filter(skip_date__gte=start_date)
+        skip_requests_query = skip_requests_query.filter(skip_date__gte=start_date)
     if end_date:
-        skip_requests = skip_requests.filter(skip_date__lte=end_date)
+        skip_requests_query = skip_requests_query.filter(skip_date__lte=end_date)
     
-    skip_requests = skip_requests.order_by('-skip_date')
+    skip_requests = skip_requests_query.order_by('-skip_date')
     
     data = []
     for skip in skip_requests:
@@ -818,7 +864,7 @@ def admin_skip_requests(request):
 
 
 @api_view(['PUT'])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdminOrDeliveryPartner])
 def admin_update_delivery_status(request):
     """Update delivery status for multiple users on a specific date"""
     delivery_date = request.data.get('delivery_date')
