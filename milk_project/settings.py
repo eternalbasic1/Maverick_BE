@@ -23,13 +23,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'your-secret-key-here')
+# Fail loudly if SECRET_KEY is not set (production requirement)
+SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+# ALLOWED_HOSTS: Read from .env file (comma-separated list)
+# Example in .env: ALLOWED_HOSTS=your-domain.com,www.your-domain.com,123.456.789.0
+ALLOWED_HOSTS_STR = os.environ.get('ALLOWED_HOSTS', '')
+if ALLOWED_HOSTS_STR:
+    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',') if host.strip()]
+else:
+    # Fallback for development only - will fail in production if not set
+    if DEBUG:
+        ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+    else:
+        raise ValueError("ALLOWED_HOSTS must be set in .env for production deployment")
 
 
 # Application definition
@@ -124,6 +134,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # Required for production (collectstatic)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -137,17 +148,24 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
 }
 
 # Firebase configuration
 FIREBASE_CREDENTIALS_PATH = os.environ.get('FIREBASE_CREDENTIALS_PATH', 'path/to/firebase-credentials.json')
 
 # JWT Configuration
-JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key')
-JWT_ACCESS_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 15 minutes
+# Fail loudly if JWT_SECRET_KEY is not set (production requirement)
+JWT_SECRET_KEY = os.environ['JWT_SECRET_KEY']
+JWT_ACCESS_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 7 days
 JWT_REFRESH_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 7 days
 
 
+# CORS Configuration
+# CORS_ALLOW_ALL_ORIGINS = True is acceptable for React Native mobile apps
+# (CORS is mainly a browser security feature, React Native doesn't use browsers)
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_HEADERS = [
     'accept',
@@ -160,3 +178,18 @@ CORS_ALLOWED_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Production Security Settings
+# These should be enabled once HTTPS is configured (via Nginx + Certbot)
+USE_HTTPS = os.environ.get('USE_HTTPS', 'False').lower() == 'true'
+
+if USE_HTTPS:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
